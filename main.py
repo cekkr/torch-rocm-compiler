@@ -72,23 +72,23 @@ def prepare_build_environment(rocm_path: str, rocm_version: str, gpu_arch: str):
         'USE_CUDA': '0',
         'PATH': f"{rocm_path}/bin:{rocm_path}/llvm/bin:{env.get('PATH', '')}",
         'LD_LIBRARY_PATH': f"{rocm_path}/lib:{rocm_path}/lib64:{env.get('LD_LIBRARY_PATH', '')}",
-        'VERBOSE': '1'
+        'VERBOSE':'1'
     })
 
     # Flags di compilazione principali
     compile_flags = [
-        f'--rocm-path={rocm_path}',
-        f'--rocm-device-lib-path={rocm_path}/amdgcn/bitcode',
+        '--rocm-path=/opt/rocm',  # Path assoluto senza quote
+        '--rocm-device-lib-path=/opt/rocm/amdgcn/bitcode',
         f'--offload-arch={gpu_arch}',
-        f'-I{rocm_path}/include',
-        f'-I{rocm_path}/include/hip',
-        f'-I{rocm_path}/include/rocm',
+        '-I/opt/rocm/include',
+        '-I/opt/rocm/include/hip',
+        '-I/opt/rocm/include/rocm',
         '-D__HIP_PLATFORM_AMD__',
         '-D__HIP_ROCclr__',
         f'-DROCM_VERSION_MAJOR={major}',
         f'-DROCM_VERSION_MINOR={minor}',
-        f'-DROCM_VERSION={major}{minor}01',
-        f'-DTORCH_HIP_VERSION={major}{minor}0',
+        f'-DROCM_VERSION={major}{minor}301',  # Format: 60301
+        f'-DTORCH_HIP_VERSION={major}{minor}2',  # Format: 602
         '-DUSE_ROCM',
         '-DHIP_COMPILER=clang',
         '-DUSE_MIOPEN',
@@ -103,15 +103,27 @@ def prepare_build_environment(rocm_path: str, rocm_version: str, gpu_arch: str):
 
     # CMake arguments
     cmake_args = [
-        f'--rocm-path={rocm_path}',
         f'-DROCM_PATH={rocm_path}',
         f'-DHIP_PATH={rocm_path}/hip',
         '-DHIP_COMPILER=clang',
         '-DUSE_ROCM=ON',
         '-DUSE_CUDA=OFF',
         '-DCMAKE_CXX_STANDARD=17',
-        f'-DHIP_COMPILER_FLAGS=--offload-arch={gpu_arch}',
-        f'-DCMAKE_HIP_ARCHITECTURES={gpu_arch}'
+        f'-DHIP_COMPILER_FLAGS="--rocm-path={rocm_path} --offload-arch={gpu_arch}"',  # Solo per HIP
+        f'-DCMAKE_HIP_ARCHITECTURES={gpu_arch}',
+        f'-DHIP_CLANG_PATH={rocm_path}/llvm/bin',
+        f'-DHIP_RUNTIME_PATH={rocm_path}/hip',
+        f'-DHIP_PLATFORM=amd',
+        '-DCMAKE_VERBOSE_MAKEFILE=ON',
+        # Flag specifiche per gloo
+        f'-DCMAKE_HIP_COMPILE_FLAGS="--rocm-path={rocm_path}"',  # Flag per la compilazione HIP in gloo
+        f'-DHIP_HIPCC_FLAGS="--rocm-path={rocm_path}"',  # Flag dirette per hipcc
+        f'-DHIP_CLANG_FLAGS="--rocm-path={rocm_path}"',  # Flag per clang quando usato da HIP
+        f'-DCMAKE_HIP_LINK_FLAGS="--rocm-path={rocm_path}"',  # Flag per il linking
+        # Per debug
+        '-DCMAKE_VERBOSE_MAKEFILE=ON',
+        '-DCMAKE_HIP_VERBOSE_MAKEFILE=ON',
+        '-DCMAKE_HIP_VERBOSE_COMPILATION=ON'
     ]
 
     env['CMAKE_ARGS'] = ' '.join(cmake_args)
@@ -163,7 +175,6 @@ def build_pytorch(source_path: str, python_version: str, gpu_arch: str = "gfx110
     except Exception as e:
         logger.error(f"Errore: {e}")
         return False
-
 
 def main():
     source_path = sys.argv[1] if len(sys.argv) > 1 else "/home/riccardo/Sources/Gits/pytorch"
