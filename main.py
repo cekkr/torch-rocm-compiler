@@ -141,9 +141,9 @@ def main():
     if len(sys.argv) < 2:
         print("Uso: script.py <base_path> [python_cmd] [gpu_arch] [packages...]")
         print("Packages disponibili:", ", ".join(PYTORCH_REPOS.keys()))
-        sys.exit(1)
+        #sys.exit(1)
 
-    base_path = Path(sys.argv[1]).resolve()
+    base_path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path("pytorch/")
     python_cmd = sys.argv[2] if len(sys.argv) > 2 else "python3.11"
     gpu_arch = sys.argv[3] if len(sys.argv) > 3 else "gfx1102"
     packages = sys.argv[4:] if len(sys.argv) > 4 else ["pytorch"]
