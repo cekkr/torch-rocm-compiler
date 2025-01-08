@@ -72,7 +72,6 @@ def prepare_build_environment(rocm_path: str, rocm_version: str, gpu_arch: str):
         'USE_CUDA': '0',
         'PATH': f"{rocm_path}/bin:{rocm_path}/llvm/bin:{env.get('PATH', '')}",
         'LD_LIBRARY_PATH': f"{rocm_path}/lib:{rocm_path}/lib64:{env.get('LD_LIBRARY_PATH', '')}",
-        'VERBOSE':'1'
     })
 
     # Flags di compilazione principali
@@ -103,18 +102,13 @@ def prepare_build_environment(rocm_path: str, rocm_version: str, gpu_arch: str):
 
     # CMake arguments
     cmake_args = [
+        # Base ROCm config
         f'-DROCM_PATH={rocm_path}',
         f'-DHIP_PATH={rocm_path}/hip',
         '-DHIP_COMPILER=clang',
         '-DUSE_ROCM=ON',
         '-DUSE_CUDA=OFF',
         '-DCMAKE_CXX_STANDARD=17',
-        f'-DHIP_COMPILER_FLAGS="--rocm-path={rocm_path} --offload-arch={gpu_arch}"',  # Solo per HIP
-        f'-DCMAKE_HIP_ARCHITECTURES={gpu_arch}',
-        f'-DHIP_CLANG_PATH={rocm_path}/llvm/bin',
-        f'-DHIP_RUNTIME_PATH={rocm_path}/hip',
-        f'-DHIP_PLATFORM=amd',
-        '-DCMAKE_VERBOSE_MAKEFILE=ON',
 
         # HIP/ROCm specific flags
         f'-DCMAKE_HIP_COMPILE_FLAGS="--rocm-path={rocm_path}"',
@@ -136,22 +130,62 @@ def prepare_build_environment(rocm_path: str, rocm_version: str, gpu_arch: str):
         '-DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -mno-avx2"',
         '-DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -mno-avx2"',
 
-        # Per debug
+        # Debug flags
         '-DCMAKE_VERBOSE_MAKEFILE=ON',
         '-DCMAKE_HIP_VERBOSE_MAKEFILE=ON',
         '-DCMAKE_HIP_VERBOSE_COMPILATION=ON'
     ]
 
+    cmake_args.extend([
+        f'-DCMAKE_HIP_FLAGS="--rocm-path={rocm_path} ${{CMAKE_HIP_FLAGS}}"',
+        f'-DHIP_HIPCC_FLAGS="--rocm-path={rocm_path} ${{HIP_HIPCC_FLAGS}}"',
+        f'-DCMAKE_HIP_COMPILER_FLAGS="--rocm-path={rocm_path}"',
+    ])
+
     env['CMAKE_ARGS'] = ' '.join(cmake_args)
     return env
 
+def patch_gloo_cmake(source_path: str, rocm_path: str):
+    """Patcha il file CMake di gloo per forzare rocm-path."""
+
+    # todo: make it dynamic in basis of the system
+    HIP_HIPCC_FLAGS = "--rocm-path=/opt/rocm \
+                     --rocm-device-lib-path=/opt/rocm/amdgcn/bitcode \
+                     --offload-arch=gfx1102 \
+                     -D__HIP_PLATFORM_AMD__ \
+                     -D__HIP_ROCclr__ \
+                     -DUSE_ROCM \
+                     -DHIP_COMPILER=clang \
+                     -std=c++17 \
+                     -fPIC \
+                     -pthread"
+
+    gloo_cmake = os.path.join(source_path, "third_party/gloo/CMakeLists.txt")
+    with open(gloo_cmake, 'r') as f:
+        lines = f.readlines()
+
+    # Cerca il punto di inserimento corretto
+    for i, line in enumerate(lines):
+        if 'set(CMAKE_HIP_FLAGS' in line:
+            # Assicurati che il flag rocm-path sia presente
+            if f'--rocm-path={rocm_path}' not in line:
+                lines[i] = line.rstrip() + f' "--rocm-path={rocm_path}"\n'
+        elif 'hip_add_executable' in line or 'hip_add_library' in line:
+            # Aggiungi anche per i target HIP
+            prev_line = lines[i-1]
+            if not any('--rocm-path' in l for l in [prev_line, line]):
+                lines.insert(i, f'set(HIP_HIPCC_FLAGS ${HIP_HIPCC_FLAGS} "--rocm-path={rocm_path}")\n')
+
+    with open(gloo_cmake, 'w') as f:
+        f.writelines(lines)
 
 def build_pytorch(source_path: str, python_version: str, gpu_arch: str = "gfx1102"):
-    """Compila PyTorch per ROCm."""
     try:
-        # Verifica e prepara l'ambiente
         rocm_path, rocm_version = detect_rocm_installation()
         logger.info(f"Rilevato ROCm {rocm_version} in {rocm_path}")
+
+        # Patcha il CMake di gloo prima della build
+        patch_gloo_cmake(source_path, rocm_path)
 
         clang_path = check_clang()
         logger.info(f"Usando clang++ da: {clang_path}")
@@ -191,6 +225,7 @@ def build_pytorch(source_path: str, python_version: str, gpu_arch: str = "gfx110
     except Exception as e:
         logger.error(f"Errore: {e}")
         return False
+
 
 def main():
     source_path = sys.argv[1] if len(sys.argv) > 1 else "/home/riccardo/Sources/Gits/pytorch"
