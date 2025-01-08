@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+import glob
 import os
+import re
 import sys
 import subprocess
 import logging
@@ -10,18 +12,30 @@ logger = logging.getLogger(__name__)
 
 
 def get_rocm_info():
-    rocm_path = "/opt/rocm"
-    if not os.path.exists(rocm_path):
-        raise RuntimeError(f"ROCm non trovato in {rocm_path}")
+    """Rileva l'installazione di ROCm e la sua versione."""
+    default_path = "/opt/rocm"
+    if not os.path.exists(default_path):
+        raise RuntimeError(f"ROCm path {default_path} non trovato")
 
+    # Cerca la versione installata
     try:
         result = subprocess.run(['rocm-smi', '--showversion'],
                                 capture_output=True, text=True, check=True)
-        version = result.stdout.strip().split()[-1]
-        return rocm_path, version
+        version_match = re.search(r'ROCm-(\d+\.\d+\.\d+)', result.stdout)
+        if version_match:
+            return default_path, version_match.group(1)
     except subprocess.CalledProcessError:
-        raise RuntimeError("Impossibile determinare la versione ROCm")
+        pass
 
+    # Fallback: cerca nelle directory
+    rocm_dirs = glob.glob("/opt/rocm-*")
+    if rocm_dirs:
+        latest_dir = sorted(rocm_dirs)[-1]
+        version_match = re.search(r'rocm-(\d+\.\d+\.\d+)', latest_dir)
+        if version_match:
+            return default_path, version_match.group(1)
+
+    raise RuntimeError("Non è stato possibile determinare la versione di ROCm")
 
 def setup_build_env(rocm_path, gpu_arch):
     env = os.environ.copy()
