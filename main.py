@@ -115,11 +115,27 @@ def prepare_build_environment(rocm_path: str, rocm_version: str, gpu_arch: str):
         f'-DHIP_RUNTIME_PATH={rocm_path}/hip',
         f'-DHIP_PLATFORM=amd',
         '-DCMAKE_VERBOSE_MAKEFILE=ON',
-        # Flag specifiche per gloo
-        f'-DCMAKE_HIP_COMPILE_FLAGS="--rocm-path={rocm_path}"',  # Flag per la compilazione HIP in gloo
-        f'-DHIP_HIPCC_FLAGS="--rocm-path={rocm_path}"',  # Flag dirette per hipcc
-        f'-DHIP_CLANG_FLAGS="--rocm-path={rocm_path}"',  # Flag per clang quando usato da HIP
-        f'-DCMAKE_HIP_LINK_FLAGS="--rocm-path={rocm_path}"',  # Flag per il linking
+
+        # HIP/ROCm specific flags
+        f'-DCMAKE_HIP_COMPILE_FLAGS="--rocm-path={rocm_path}"',
+        f'-DHIP_HIPCC_FLAGS="--rocm-path={rocm_path}"',
+        f'-DHIP_CLANG_FLAGS="--rocm-path={rocm_path}"',
+        f'-DCMAKE_HIP_LINK_FLAGS="--rocm-path={rocm_path}"',
+        f'-DHIP_COMPILER_FLAGS="--rocm-path={rocm_path} --offload-arch={gpu_arch}"',
+        f'-DCMAKE_HIP_ARCHITECTURES={gpu_arch}',
+        f'-DHIP_CLANG_PATH={rocm_path}/llvm/bin',
+        f'-DHIP_RUNTIME_PATH={rocm_path}/hip',
+
+        # FBGEMM specific flags
+        '-DCMAKE_BUILD_TYPE=Release',
+        '-DUSE_NATIVE_ARCH=OFF',
+        '-DFBGEMM_NO_AVX512=ON',
+        '-DBUILD_CAFFE2=OFF',
+
+        # Compiler flags
+        '-DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG -mno-avx2"',
+        '-DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG -mno-avx2"',
+
         # Per debug
         '-DCMAKE_VERBOSE_MAKEFILE=ON',
         '-DCMAKE_HIP_VERBOSE_MAKEFILE=ON',
