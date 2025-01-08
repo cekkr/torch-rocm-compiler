@@ -65,7 +65,9 @@ def setup_build_env(rocm_path: str, gpu_arch: str) -> Dict[str, str]:
         f'--rocm-path={rocm_path}',
         f'--offload-arch={gpu_arch}',
         '-D__HIP_PLATFORM_AMD__=1',
-        '-D_GLIBCXX_USE_CXX11_ABI=0'
+        '-D_GLIBCXX_USE_CXX11_ABI=0',
+        '-Wno-missing-prototypes',
+        '-Wno-error=missing-prototypes'
     ]
 
     env.update({
@@ -75,7 +77,8 @@ def setup_build_env(rocm_path: str, gpu_arch: str) -> Dict[str, str]:
         'CMAKE_PREFIX_PATH': f"{rocm_path}/lib/cmake/hip:{env.get('CMAKE_PREFIX_PATH', '')}",
         'USE_ROCM': '1',
         'PYTORCH_ROCM_ARCH': gpu_arch,
-        'USE_NINJA': '1'
+        'USE_NINJA': '1',
+        'BUILD_TEST': '0'
     })
 
     return env
@@ -85,7 +88,7 @@ def clone_repo(repo_name: str, target_path: Path) -> None:
     """Clona una repository PyTorch se non esiste."""
     if not target_path.exists():
         logger.info(f"Clonazione {repo_name} in {target_path}")
-        subprocess.run(["git", "clone", PYTORCH_REPOS[repo_name], str(target_path)], check=True)
+        subprocess.run(["git", "clone", "--recurse", PYTORCH_REPOS[repo_name], str(target_path)], check=True)
 
     setup_repo(target_path)
 
@@ -110,9 +113,17 @@ def setup_repo(repo_path: Path) -> None:
     subprocess.run([sys.executable, "-m", "pip", "install"] + requirements, check=True)
 
 
+def init_repo(repo_path: Path) -> None:
+    """Inizializza il repository con submodules."""
+    logger.info("Inizializzazione submodules...")
+    subprocess.run(["git", "submodule", "sync", "--recursive"], cwd=repo_path, check=True)
+    subprocess.run(["git", "submodule", "update", "--init", "--recursive"], cwd=repo_path, check=True)
+
+
 def build_package(source_path: Path, python_cmd: str, gpu_arch: str) -> bool:
     """Compila un pacchetto PyTorch."""
     try:
+        init_repo(source_path)
         rocm_path, rocm_version = get_rocm_info()
         logger.info(f"ROCm {rocm_version} trovato in {rocm_path}")
 
